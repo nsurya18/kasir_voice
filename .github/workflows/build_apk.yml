@@ -2,7 +2,8 @@ name: Rakit APK Kasir Voice Clean
 
 on:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
@@ -10,29 +11,29 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Ambil Kode dari Repositori
+    - name: Checkout Repository
       uses: actions/checkout@v3
 
-    - name: Pasang Java Environment Modern
+    - name: Set up Java Environment
       uses: actions/setup-java@v3
       with:
         distribution: 'zulu'
         java-version: '17'
 
-    - name: Pasang Flutter SDK Versi Terbaru
+    - name: Set up Flutter SDK
       uses: subosito/flutter-action@v2
       with:
         channel: 'stable'
 
-    - name: Ambil Library dan Bersihkan Cache V1
+    - name: Fetch Dependencies
       run: |
         flutter clean
         flutter pub get
 
-    - name: Masak File APK Rilis Final
+    - name: Build Application Package
       run: flutter build apk --release --no-tree-shake-icons
 
-    - name: Simpan Berkas Hasil Jadi APK
+    - name: Upload Finished Artifact
       uses: actions/upload-artifact@v3
       with:
         name: Kasir-Voice-Apk-Final

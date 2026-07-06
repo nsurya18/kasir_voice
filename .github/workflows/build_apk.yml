@@ -24,6 +24,10 @@ jobs:
         with:
           channel: 'stable'
 
+      - name: Recreate Complete Android Structures
+        # Memaksa server cloud melahirkan kembali folder android/app/build.gradle secara instan
+        run: flutter create --platforms=android .
+
       - name: Fetch Dependencies
         run: |
           flutter clean

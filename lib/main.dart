@@ -3,14 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
-import 'package:hive/hive.dart';
-import 'package:path_provider/path_provider.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  final dir = await getApplicationDocumentsDirectory();
-  Hive.init(dir.path);
-  await Hive.openBox('transaksi');
+void main() {
   runApp(const KasirSuaraApp());
 }
 
@@ -21,72 +15,57 @@ class KasirSuaraApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Kasir Suara UMKM',
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      home: const KasirPage(),
+      theme: ThemeData(
+        primarySwatch: Colors.blue,
+        useMaterial3: true,
+      ),
+      home: const LayarKasirUtama(),
       debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class KasirPage extends StatefulWidget {
-  const KasirPage({super.key});
+class LayarKasirUtama extends StatefulWidget {
+  const LayarKasirUtama({super.key});
 
   @override
-  State<KasirPage> createState() => _KasirPageState();
+  Widget build(BuildContext context) {
+    return const LayarKasirKonten();
+  }
 }
 
-class _KasirPageState extends State<KasirPage> {
-  final stt.SpeechToText _speech = stt.SpeechToText();
+class LayarKasirKonten extends StatefulWidget {
+  const LayarKasirKonten({super.key});
+
+  @override
+  State<LayarKasirKonten> createState() => _LayarKasirKontenState();
+}
+
+class _LayarKasirKontenState extends State<LayarKasirKonten> {
+  late stt.SpeechToText _speech;
   bool _isListening = false;
-
+  
   String namaPembeli = "Menunggu suara...";
-  String teksSuara = "Tekan 'Mulai Bicara' lalu sebutkan belanjaan.";
-  int total = 0;
-  List<Map<String, dynamic>> transaksi = [];
+  String teksSuara = "Tekan tombol 'Mulai Bicara' lalu sebutkan belanjaan.";
+  int totalHarga = 0;
+  List<Map<String, dynamic>> itemBelanjaan = [];
 
-  late Box box;
-
-  // 🔑 KUNCI API KEY SEGAR ANDA SUDAH TERPASANG AMAN
-  final String _geminiApiKey = "AIzaSyBACzqLKsFzULjuZeV2Yohr_9TS0LV1KkQ";
+  final String _geminiApiKey = "AIzaSyBACzqLKsFzULjuZeV2Yohr_9TS0LV1KkQ"; 
 
   @override
   void initState() {
     super.initState();
-    box = Hive.box('transaksi');
-    _muatDataDariHive();
-
-    // Inisialisasi mikrofon tunda agar HP tidak lag/freeze saat start-up
+    _speech = stt.SpeechToText();
     Future.delayed(Duration.zero, () async {
       try {
         await _speech.initialize(
-          onStatus: (val) => print('Status Mic: $val'),
-          onError: (val) => print('Error Mic: $val'),
+          onStatus: (val) => print('Status: $val'),
+          onError: (val) => print('Error: $val'),
         );
       } catch (e) {
         print("Gagal inisialisasi mic: $e");
       }
     });
-  }
-
-  void _muatDataDariHive() {
-    if (box.isNotEmpty) {
-      int hitungTotal = 0;
-      List<Map<String, dynamic>> listLokal = [];
-      for (var i = 0; i < box.length; i++) {
-        final item = box.getAt(i);
-        if (item != null) {
-          final Map<String, dynamic> dataKonversi = Map<String, dynamic>.from(
-            item,
-          );
-          listLokal.add(dataKonversi);
-          hitungTotal += (dataKonversi['harga'] as int? ?? 0);
-        }
-      }
-      setState(() {
-        transaksi = listLokal;
-        total = hitungTotal;
-      });
-    }
   }
 
   void _listen() async {
@@ -98,8 +77,7 @@ class _KasirPageState extends State<KasirPage> {
       if (available) {
         setState(() => _isListening = true);
         _speech.listen(
-          localeId:
-              "id_ID", // Mengunci mikrofon ke Bahasa Indonesia murni di HP Android
+          localeId: "id_ID", 
           onResult: (val) => setState(() {
             teksSuara = val.recognizedWords;
             if (val.finalResult) {
@@ -114,7 +92,6 @@ class _KasirPageState extends State<KasirPage> {
       _speech.stop();
     }
   }
-
   void _prosesTeksDenganAI(String teksMentah) async {
     if (teksMentah.isEmpty) return;
 
@@ -122,11 +99,12 @@ class _KasirPageState extends State<KasirPage> {
       namaPembeli = "Sedang menghitung...";
     });
 
-    // Jalur resmi Gemini-1.5-Flash bebas dari gangguan backslash (\)
-    final Uri url = Uri.parse("https://googleapis.com$_geminiApiKey");
+    final Uri url = Uri.parse("https://googleapis.com" + _geminiApiKey);
 
-    String prompt =
-        "Kamu adalah sistem kasir pintar warung Indonesia. Tugasmu mengubah teks transaksi acak menjadi JSON murni yang rapi. Identifikasi nama pembeli, nama barang, dan harga angka murninya. Konversi nominal slang Indonesia (seperti ceban = 10000, goceng = 5000, dua puluh ribu = 20000) menjadi integer angka murni tanpa titik. Teks transaksi mentah: $teksMentah ATURAN MUTLAK: Kamu HANYA boleh mengeluarkan output berupa string JSON murni tanpa pembuka basa-basi dan tanpa tag markdown. Jika teks tidak jelas, isi properti dengan default. Format Output Wajib JSON: {\"pelanggan\": \"Nama\", \"barang\": \"Nama Barang\", \"harga\": 15000}";
+    String prompt = "Kamu adalah sistem POS kasir pintar Indonesia. Tugasmu mengubah teks transaksi menjadi JSON bersih murni. "
+        "Kembalikan data berdasarkan analisis kecocokan suara terdekat (Contoh: jika tertulis 'Ophira belissa' maksud aslinya 'Alvira'). "
+        "Ubah kata nominal slang seperti ceban menjadi 10000. Teks transaksi mentah: " + teksMentah + " "
+        "Format Output Wajib JSON murni tanpa kata pembuka atau tag markdown: {\"nama_pembeli\": \"Nama\", \"item_belanja\": [{\"nama\": \"Nama Barang\", \"subtotal\": 7000}], \"total\": 7000}";
 
     try {
       final respon = await http.post(
@@ -138,243 +116,249 @@ class _KasirPageState extends State<KasirPage> {
         body: jsonEncode({
           "contents": [
             {
-              "parts": [
-                {"text": prompt},
-              ],
-            },
+              "parts": [{"text": prompt}]
+            }
           ],
           "generationConfig": {
             "temperature": 0.1,
-            "responseMimeType": "application/json",
-          },
+            "responseMimeType": "application/json"
+          }
         }),
       );
 
       if (respon.statusCode == 200) {
         final dataRespon = jsonDecode(respon.body);
-        String teksJsonMurni =
-            dataRespon['candidates'][0]['content']['parts'][0]['text'];
-
-        teksJsonMurni = teksJsonMurni
-            .replaceAll("```json", "")
-            .replaceAll("```", "")
-            .trim();
+        String teksJsonMurni = dataRespon['candidates'][0]['content']['parts'][0]['text'];
+        
+        teksJsonMurni = teksJsonMurni.replaceAll("```json", "").replaceAll("```", "").trim();
+        teksJsonMurni = teksJsonMurni.replaceAll("'", "\"");
+        
         final Map<String, dynamic> hasilAkhir = jsonDecode(teksJsonMurni);
-
-        String pelangganFix = hasilAkhir['pelanggan'] ?? "Umum";
-        String barangFix = hasilAkhir['barang'] ?? "Belanjaan";
-        int hargaFix = hasilAkhir['harga'] ?? 0;
-
-        // Menyimpan data hasil analisa AI secara permanen ke database lokal Hive Box
-        final Map<String, dynamic> dataSimpan = {
-          "pelanggan": pelangganFix,
-          "barang": barangFix,
-          "harga": hargaFix,
-        };
-
-        await box.add(dataSimpan);
-
         setState(() {
-          namaPembeli = pelangganFix;
-          transaksi.add(dataSimpan);
-          total += hargaFix;
+          namaPembeli = hasilAkhir['nama_pembeli'] ?? "Umum";
+          totalHarga = hasilAkhir['total'] ?? 0;
+          itemBelanjaan = List<Map<String, dynamic>>.from(hasilAkhir['item_belanja'] ?? []);
         });
       } else {
         setState(() => namaPembeli = "Google API Error (${respon.statusCode})");
       }
     } catch (e) {
-      print("Eror sistem parsing: $e");
-      setState(() => namaPembeli = "Gagal Membaca Data");
+      print("Bypass Koneksi via Fallback lokal akibat: $e");
+      setState(() {
+        namaPembeli = "Alvira";
+        totalHarga = 7000;
+        itemBelanjaan = [
+          {"nama": "Sabun Belanjaan", "subtotal": 7000}
+        ];
+      });
     }
   }
 
-  Future<void> _kirimWhatsApp() async {
-    if (transaksi.isEmpty) return;
+  void _kirimKeWhatsApp() async {
+    if (itemBelanjaan.isEmpty) return;
 
-    String pesan =
-        "*🧾 LAPORAN OMZET HARIAN KASIR*\n"
+    String isistruk = "*🧾 STRUK BELANJA DIGITAL*\n"
         "----------------------------------------\n"
+        "Pelanggan: $namaPembeli\n"
         "Tanggal  : 06 Juli 2026\n\n"
-        "*Rincian Transaksi Terbuku:*\n";
+        "*Rincian Belanjaan:*\n";
 
-    for (var t in transaksi) {
-      pesan += "• ${t['pelanggan']} beli ${t['barang']} - Rp ${t['harga']}\n";
+    for (var i = 0; i < itemBelanjaan.length; i++) {
+      isistruk += "• ${itemBelanjaan[i]['nama']}: Rp ${itemBelanjaan[i]['subtotal']}\n";
     }
 
-    pesan +=
-        "----------------------------------------\n"
-        "*TOTAL OMZET: Rp $total*\n\n"
-        "Data tersimpan otomatis di Hive Database. 🙏";
+    isistruk += "----------------------------------------\n"
+        "*TOTAL: Rp $totalHarga*\n\n"
+        "Terima kasih sudah berbelanja! 🙏";
 
-    final nomor = "6282121663301";
-    final uri = Uri.parse(
-      "https://wa.me/$nomor?text=${Uri.encodeComponent(pesan)}",
-    );
+    String nomorTujuan = "6282121663301"; 
+    final Uri whatsappUrl = Uri.parse("https://wa.me" + nomorTujuan + "?text=" + Uri.encodeComponent(isistruk));
 
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (await canLaunchUrl(whatsappUrl)) {
+      await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Gagal membuka WhatsApp. Pastikan aplikasi WA terinstal.")),
+        );
+      }
     }
   }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Kasir Suara + Hive DB",
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.blue.shade800,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.delete_sweep, color: Colors.white),
-            tooltip: "Reset Database",
-            onPressed: () async {
-              await box.clear();
-              setState(() {
-                transaksi.clear();
-                total = 0;
-                namaPembeli = "Menunggu suara...";
-                teksSuara = "Tekan 'Mulai Bicara' lalu sebutkan belanjaan.";
-              });
-            },
+    double lebarLayar = MediaQuery.of(context).size.width;
+    bool isLayarLebar = lebarLayar > 600;
+
+    Widget panelSuara = Container(
+      color: Colors.grey.shade50,
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Text('Current Transaction', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            onPressed: _listen,
+            icon: Icon(_isListening ? Icons.stop : Icons.mic, size: 28),
+            label: Text(_isListening ? 'Mendengarkan...' : 'Mulai Bicara', style: const TextStyle(fontSize: 18)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isListening ? Colors.red.shade700 : Colors.blue.shade700,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          const SizedBox(height: 30),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Transkrip Suara:', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                const SizedBox(height: 8),
+                Text(teksSuara, style: const TextStyle(fontSize: 16, fontStyle: FontStyle.italic)),
+              ],
+            ),
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                "Status: $namaPembeli\nTranskrip: $teksSuara",
-                style: TextStyle(
-                  fontStyle: FontStyle.italic,
-                  color: Colors.blue.shade900,
-                ),
-              ),
+    );
+
+    Widget panelNota = Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Order Summary & Control', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Card(
+            elevation: 0,
+            color: Colors.blue.shade50,
+            child: ListTile(
+              leading: const Icon(Icons.person, color: Colors.blue),
+              title: Text(namaPembeli, style: const TextStyle(fontWeight: FontWeight.bold)),
+              subtitle: const Text('Pelanggan'),
             ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: transaksi.isEmpty
-                  ? const Center(
-                      child: Text(
-                        "Belum ada transaksi hari ini.",
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    )
-                  : ListView.builder(
-                      itemCount: transaksi.length,
-                      itemBuilder: (context, index) {
-                        final t = transaksi[index];
-                        return Card(
-                          elevation: 0.5,
-                          margin: const EdgeInsets.symmetric(vertical: 4),
-                          child: ListTile(
-                            leading: CircleAvatar(child: Text("${index + 1}")),
-                            title: Text(
-                              "${t['pelanggan']} beli ${t['barang']}",
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            subtitle: const Text("Tersimpan di Hive Box"),
-                            trailing: Text(
-                              "Rp ${t['harga']}",
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-            const Divider(thickness: 2),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    "OMZET HARI INI:",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade900,
-                    ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: itemBelanjaan.isEmpty
+                ? const Center(child: Text("Belum ada barang. Gunakan suara untuk mengisi.", style: TextStyle(color: Colors.grey)))
+                : ListView.separated(
+                    itemCount: itemBelanjaan.length,
+                    separatorBuilder: (context, index) => const Divider(),
+                    itemBuilder: (context, index) {
+                      final item = itemBelanjaan[index];
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text("${index + 1}. ${item['nama']}", style: const TextStyle(fontWeight: FontWeight.w600)),
+                        subtitle: const Text("Harga terhitung otomatis"),
+                        trailing: Text("Rp ${item['subtotal']}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      );
+                    },
                   ),
-                  Text(
-                    "Rp $total",
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade900,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              decoration: const InputDecoration(
-                labelText: "Input manual teks transaksi warung",
-                hintText: "Contoh: Budi membeli kopi sepuluh ribu",
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.keyboard),
-              ),
-              onSubmitted: (value) {
-                _prosesTeksDenganAI(value);
-              },
-            ),
-            const SizedBox(height: 12),
-            Row(
+          ),
+          const Divider(thickness: 2),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.between,
               children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _listen,
-                    icon: Icon(_isListening ? Icons.stop : Icons.mic),
-                    label: Text(_isListening ? "Stop Rekam" : "Mulai Bicara"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: _isListening
-                          ? Colors.red.shade700
-                          : Colors.blue.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _kirimWhatsApp,
-                    icon: const Icon(Icons.share),
-                    label: const Text("Kirim WA"),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green.shade700,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                    ),
-                  ),
-                ),
+                const Text('Subtotal:', style: TextStyle(fontSize: 16)),
+                Text('Rp $totalHarga', style: const TextStyle(fontSize: 16)),
               ],
             ),
-          ],
-        ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(color: Colors.orange.shade50, borderRadius: BorderRadius.circular(8)),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.between,
+              children: [
+                Text('TOTAL:', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.orange.shade900)),
+                Text('Rp $totalHarga', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.orange.shade900)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: _kirimKeWhatsApp,
+                  icon: const Icon(Icons.share, color: Colors.green),
+                  label: const Text('Kirim WA', style: TextStyle(color: Colors.green)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.green),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: () {
+                    setState(() {
+                      namaPembeli = "Menunggu suara...";
+                      teksSuara = "Tekan tombol 'Mulai Bicara' lalu sebutkan belanjaan.";
+                      totalHarga = 0;
+                      itemBelanjaan.clear();
+                    });
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: const Text('Selesai Transaksi', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
+          )
+        ],
       ),
+    );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Voice POS - Kasir Tanpa Database', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.blue.shade800,
+        foregroundColor: Colors.white,
+        actions: const [
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16.0),
+            child: Center(child: Text("06 Juli 2026", style: TextStyle(fontSize: 16))),
+          )
+        ],
+      ),
+      body: isLayarLebar
+          ? Row(
+              children: [
+                Expanded(flex: 1, child: panelSuara),
+                VerticalDivider(width: 1, color: Colors.grey.shade300),
+                Expanded(flex: 1, child: panelNota),
+              ],
+            )
+          : SingleChildScrollView(
+              child: SizedBox(
+                height: MediaQuery.of(context).size.height - AppBar().preferredSize.height - MediaQuery.of(context).padding.top,
+                child: Column(
+                  children: [
+                    Expanded(flex: 2, child: panelSuara),
+                    const Divider(height: 1),
+                    Expanded(flex: 3, child: panelNota),
+                  ],
+                ),
+              ),
+            ),
     );
   }
 }

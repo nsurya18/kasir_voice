@@ -10,33 +10,31 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Ambil Kode dari Repositori GitHub
         uses: actions/checkout@v4
 
-      - name: Set up Java Environment
+      - name: Set up Java SDK Modern untuk Android
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Set up Flutter SDK
+      - name: Pasang Flutter SDK Versi Stabil Terbaru
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-
-      - name: Recreate Complete Android Structures
-        # Memaksa server cloud melahirkan kembali folder android/app/build.gradle secara instan
+      - name: Paksa Lahirkan Struktur Folder Android Stabil
         run: flutter create --platforms=android .
 
-      - name: Fetch Dependencies
+      - name: Bersihkan Cache dan Unduh Library Modern
         run: |
           flutter clean
           flutter pub get
 
-      - name: Build Application Package
+      - name: Proses Memasak Paket APK Rilis
         run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Upload Finished Artifact
+      - name: Simpan dan Upload Hasil Jadi Berkas APK v4
         uses: actions/upload-artifact@v4
         with:
           name: Kasir-Voice-Apk-Final
